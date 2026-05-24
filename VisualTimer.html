@@ -72,12 +72,13 @@
 
     #gaugeArc {
       transform-origin: 50% 50%; transform: rotate(-90deg);
-      transition: stroke-dashoffset 0.12s linear, stroke 0.4s ease; stroke-linecap: butt; 
+      transition: stroke-dashoffset 0.12s linear, stroke 0.4s ease, transform 0.4s ease; stroke-linecap: butt; 
     }
 
     @keyframes breathe { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
     #gaugeArc.breathing { animation: breathe 3s ease-in-out infinite; }
 
+    /* アニメーション処理 */
     #ripple {
       transform-origin: 50% 50%; 
       opacity: 0; 
@@ -229,7 +230,6 @@
 
   <div id="settingsModal" role="dialog" aria-modal="true" aria-label="タイマー設定">
     <div id="modalBox">
-     
       <div class="modal-head">
         <h2 class="modal-title">タイマー設定</h2>
         <button id="closeModalBtn" aria-label="閉じる">
@@ -293,6 +293,11 @@
         <div class="tgl-row">
           <span class="tgl-text">秒数表示設定</span>
           <button id="tglTime" class="tgl-sw" role="switch" aria-checked="false" aria-label="秒数を表示する"><span class="tgl-knob"></span></button>
+        </div>
+
+        <div class="tgl-row">
+          <span class="tgl-text">ゲージ描画の修正 (iOS向け)</span>
+          <button id="tglInvert" class="tgl-sw" role="switch" aria-checked="false" aria-label="ゲージ描画の修正"><span class="tgl-knob"></span></button>
         </div>
 
         <div class="tgl-row">
@@ -370,6 +375,7 @@
     color:         '#14b8a6',
     darkMode:      false,
     showTime:      false,
+    invertGauge:   false,
     alarmOn:       true,
     workAlarm:     'chord',
     breakAlarm:    'softchime',
@@ -399,6 +405,7 @@
   const colorPicker         = $('colorPicker');
   const tglDark             = $('tglDark');
   const tglTime             = $('tglTime');
+  const tglInvert           = $('tglInvert');
   const tglAlarm            = $('tglAlarm');
   const workAlarmSelect     = $('workAlarmSelect');
   const breakAlarmSelect    = $('breakAlarmSelect');
@@ -492,16 +499,15 @@
 
   function triggerRipple() {
     rippleEl.classList.remove('play'); 
-    // SVG要素のリフローには getBoundingClientRect() を使用する
     void rippleEl.getBoundingClientRect(); 
     rippleEl.classList.add('play');
   }
 
   function playAlarmAndRipple(isWorkEnd) {
     const count = S.alarmCount;
-    const dur = 2.0;          // 音の長さ
-    const interval = 0.4;     // 音の間の休符
-    const cycleTime = dur + interval; // 1回あたりの合計サイクル(2.4秒)
+    const dur = 2.0;          
+    const interval = 0.4;     
+    const cycleTime = dur + interval; 
 
     if (!S.alarmOn) {
       for (let i = 0; i < count; i++) {
@@ -513,13 +519,12 @@
     try {
       const ctx = ensureAudio();
       const now  = ctx.currentTime;
-      const root = isWorkEnd ? 370 : 494; // 作業終了時: F#4, 休憩終了時: B4
+      const root = isWorkEnd ? 370 : 494; 
       const type = isWorkEnd ? S.workAlarm : S.breakAlarm;
       
       for (let i = 0; i < count; i++) {
         const startTime = now + i * cycleTime;
         const delayMs = (startTime - ctx.currentTime) * 1000;
-        
         setTimeout(() => triggerRipple(), Math.max(0, delayMs));
         triggerSound(ctx, type, root, dur, startTime);
       }
@@ -532,9 +537,7 @@
       const now = ctx.currentTime;
       const dur = 2.0; 
       const type = testAlarmSelect.value;
-      
       const root = 370; 
-      
       triggerSound(ctx, type, root, dur, now);
     } catch (e) { console.warn('テスト再生失敗:', e); }
   });
@@ -557,7 +560,6 @@
       } else {
         S.mode = 'work';  S.timeLeft = Math.max(0, S.workDuration - overflow);
       }
-      
       playAlarmAndRipple(justFinished === 'work');
     }
     render();
@@ -571,14 +573,25 @@
     timeDisp.textContent = String(mm).padStart(2, '0') + ':' + String(ss).padStart(2, '0');
     modeLabel.textContent = S.mode === 'work' ? '作業中' : '休憩中';
 
-    let offset;
+    let ratio;
     if (S.mode === 'work') {
-      let ratio = S.timeLeft / S.workDuration; ratio = Math.max(0, Math.min(1, ratio));
-      offset = -(1 - ratio) * CIR; 
+      ratio = S.timeLeft / S.workDuration;
     } else {
-      let ratio = (S.breakDuration - S.timeLeft) / S.breakDuration; ratio = Math.max(0, Math.min(1, ratio));
+      ratio = (S.breakDuration - S.timeLeft) / S.breakDuration;
+    }
+    ratio = Math.max(0, Math.min(1, ratio));
+
+    let offset;
+    if (S.invertGauge) {
+      // iOS用処理スイッチ
+      gaugeArc.style.transform = 'scaleX(-1) rotate(-90deg)';
+      offset = (1 - ratio) * CIR; 
+    } else {
+      // 従来モード: 負のオフセットを使用する
+      gaugeArc.style.transform = 'rotate(-90deg)';
       offset = -(1 - ratio) * CIR;
     }
+    
     gaugeArc.setAttribute('stroke-dashoffset', offset);
 
     if (S.showTime) {
@@ -690,13 +703,14 @@
 
   mkToggle(tglDark, false, on => { S.darkMode = on; document.documentElement.classList.toggle('dark', on); });
   mkToggle(tglTime, false, on => { S.showTime = on; timeText.classList.toggle('show', on); render(); });
+  mkToggle(tglInvert, false, on => { S.invertGauge = on; render(); });
   mkToggle(tglAlarm, true, on => { S.alarmOn = on; });
 
   applyColor(S.color);
   render();
   setTimeout(() => hintEl.classList.add('show'), 900);
   
-  // PWAサービスワーカーの登録
+    // PWAサービスワーカーの登録
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js')
