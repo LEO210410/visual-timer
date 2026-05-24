@@ -12,9 +12,6 @@
   <link rel="apple-touch-icon" href="icon-256.png">
 
   <style>
-    /* ═══════════════════════════════════════
-       Design Tokens
-    ═══════════════════════════════════════ */
     :root {
       --bg:            #eeede8;
       --fg:            #2a2a28;
@@ -25,7 +22,7 @@
       --modal-border:  rgba(0,0,0,0.09);
       --toggle-active: #7c6fcd;
       --hint-color:    rgba(0,0,0,0.4);
-      --ripple-color:  rgba(0,0,0,0.22); /* 常に固定のグレー（ライトモード用） */
+      --ripple-color:  rgba(0,0,0,0.22);
     }
     html.dark {
       --bg:            #16161a;
@@ -37,7 +34,7 @@
       --modal-border:  rgba(255,255,255,0.09);
       --toggle-active: #9d91e8;
       --hint-color:    rgba(255,255,255,0.3);
-      --ripple-color:  rgba(255,255,255,0.22); /* 常に固定のグレー（ダークモード用） */
+      --ripple-color:  rgba(255,255,255,0.22);
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -77,7 +74,6 @@
     @keyframes breathe { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
     #gaugeArc.breathing { animation: breathe 3s ease-in-out infinite; }
 
-    /* 波紋アニメーション */
     #ripple {
       transform-origin: 50% 50%; 
       opacity: 0; 
@@ -105,7 +101,6 @@
     }
     #hint.show { opacity: 1; }
 
-    /* Modal */
     #settingsModal {
       position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center;
       background: rgba(0,0,0,0.4); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
@@ -522,17 +517,15 @@
       
       for (let i = 0; i < count; i++) {
         const startTime = now + i * cycleTime;
-        // AudioContextの現在時刻(currentTime)と再生予定時刻の差分から正確な遅延を計算
+        // AudioContextの現在時刻(currentTime)と再生予定時刻の差分から正確な遅延を計算する処理
         const delayMs = (startTime - ctx.currentTime) * 1000;
         
-        // 音が鳴り始める瞬間に合わせて波紋をスケジュール
         setTimeout(() => triggerRipple(), Math.max(0, delayMs));
         triggerSound(ctx, type, root, dur, startTime);
       }
     } catch (e) { console.warn('音声再生失敗:', e); }
   }
 
-  /* テスト再生時のロジック（波紋は出さない・音程を固定） */
   testPlayBtn.addEventListener('click', () => {
     try {
       const ctx = ensureAudio();
@@ -540,7 +533,7 @@
       const dur = 2.0; 
       const type = testAlarmSelect.value;
       
-      // テスト再生時の音程を本番のアラーム音(作業用)の周波数に統一
+      // テスト再生時の音程を本番のアラーム音(作業用)の周波数に統一する
       const root = 370; 
       
       triggerSound(ctx, type, root, dur, now);
@@ -704,7 +697,6 @@
   render();
   setTimeout(() => hintEl.classList.add('show'), 900);
   
-  // PWAサービスワーカーの登録
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js')
