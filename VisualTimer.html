@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>VisualTimer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config = { darkMode: 'class' };</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="apple-touch-icon" href="icon-256.png">
+
+  <style>
+    /* ═══════════════════════════════════════
+       Design Tokens
+    ═══════════════════════════════════════ */
+    :root {
+      --bg:            #eeede8;
+      --fg:            #2a2a28;
+      --fg-muted:      #9b9890;
+      --track:         rgba(0,0,0,0.07);
+      --depth:         rgba(0,0,0,0.04);
+      --modal-bg:      #f8f7f4;
+      --modal-border:  rgba(0,0,0,0.09);
+      --toggle-active: #7c6fcd;
+      --hint-color:    rgba(0,0,0,0.4);
+      --ripple-color:  rgba(0,0,0,0.22); /* 常に固定のグレー（ライトモード用） */
+    }
+    html.dark {
+      --bg:            #16161a;
+      --fg:            #e2e1dc;
+      --fg-muted:      #5a5a56;
+      --track:         rgba(255,255,255,0.07);
+      --depth:         rgba(255,255,255,0.03);
+      --modal-bg:      #202026;
+      --modal-border:  rgba(255,255,255,0.09);
+      --toggle-active: #9d91e8;
+      --hint-color:    rgba(255,255,255,0.3);
+      --ripple-color:  rgba(255,255,255,0.22); /* 常に固定のグレー（ダークモード用） */
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background-color: var(--bg); color: var(--fg); font-family: 'Noto Sans JP', sans-serif;
+      min-height: 100dvh; overflow: hidden; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      transition: background-color 0.5s ease, color 0.5s ease;
+      -webkit-font-smoothing: antialiased; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+    }
+
+    #settingsBtn {
+      position: fixed; top: 1.3rem; right: 1.3rem; z-index: 30; width: 3rem; height: 3rem;
+      border-radius: 50%; border: none; background: transparent; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; color: var(--fg-muted); transition: transform 0.25s ease, color 0.2s ease; -webkit-tap-highlight-color: transparent;
+    }
+    #settingsBtn:hover { transform: rotate(40deg) scale(1.1); color: var(--fg); }
+
+    #modeLabel {
+      position: fixed; top: 2rem; left: 50%; transform: translateX(-50%);
+      font-size: 0.8rem; letter-spacing: 0.28em; font-weight: 600; color: var(--fg-muted);
+      pointer-events: none; white-space: nowrap; transition: color 0.4s ease;
+    }
+
+    #timerWrap {
+      position: relative; touch-action: none; cursor: pointer; will-change: transform; -webkit-tap-highlight-color: transparent;
+    }
+
+    #timerSvg { display: block; width: min(90vw, 600px); height: min(90vw, 600px); margin: 0 auto; overflow: visible; }
+
+    #gaugeArc {
+      transform-origin: 50% 50%; transform: rotate(-90deg);
+      transition: stroke-dashoffset 0.12s linear, stroke 0.4s ease; stroke-linecap: butt; 
+    }
+
+    @keyframes breathe { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+    #gaugeArc.breathing { animation: breathe 3s ease-in-out infinite; }
+
+    /* 波紋アニメーション */
+    #ripple {
+      transform-origin: 50% 50%; 
+      opacity: 0; 
+      stroke: var(--ripple-color); 
+      pointer-events: none;
+    }
+    @keyframes rippleOut { 
+      0%   { r: 90px; opacity: 0.45; stroke-width: 6px; } 
+      100% { r: 115px; opacity: 0; stroke-width: 0px; } 
+    }
+    #ripple.play { animation: rippleOut 0.7s ease-out forwards; }
+
+    #centerHole { fill: var(--modal-bg); stroke: var(--modal-border); stroke-width: 1.5; transition: fill 0.5s ease, stroke 0.5s ease; }
+
+    #timeText {
+      position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+      font-family: 'DM Mono', monospace; font-weight: 500; color: var(--fg);
+      pointer-events: none; transition: color 0.4s ease; font-size: clamp(1.8rem, 6vw, 3rem);
+    }
+    #timeText.show { display: flex; }
+
+    #hint {
+      margin-top: 2rem; font-size: 0.9rem; letter-spacing: 0.15em; color: var(--hint-color);
+      opacity: 0; transition: opacity 1s ease; pointer-events: none;
+    }
+    #hint.show { opacity: 1; }
+
+    /* Modal */
+    #settingsModal {
+      position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center;
+      background: rgba(0,0,0,0.4); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      opacity: 0; pointer-events: none; transition: opacity 0.22s ease;
+    }
+    #settingsModal.open { opacity: 1; pointer-events: all; }
+    @media (min-height: 600px) and (min-width: 480px) { #settingsModal { align-items: center; } }
+
+    #modalBox {
+      background: var(--modal-bg); border: 1px solid var(--modal-border); border-radius: 1.75rem;
+      padding: 1.5rem 1.5rem 1.6rem; width: 100%; max-width: 24rem; margin: 0 1rem 1.2rem;
+      max-height: 90dvh; overflow-y: auto; transform: translateY(28px) scale(0.97);
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    #settingsModal.open #modalBox { transform: translateY(0) scale(1); }
+    @media (min-width: 480px) { #modalBox { margin: 0; } }
+
+    .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.3rem; }
+    .modal-title { font-size: 1.05rem; font-weight: 600; }
+    #closeModalBtn {
+      width: 2rem; height: 2rem; border-radius: 50%; border: none; background: var(--track); color: var(--fg-muted);
+      display: flex; align-items: center; justify-content: center; cursor: pointer; transition: transform 0.15s ease;
+    }
+    #closeModalBtn:hover { transform: scale(1.1); }
+    .settings-stack { display: flex; flex-direction: column; gap: 1.2rem; }
+    .sl-row { display: flex; flex-direction: column; gap: 0.6rem; }
+    .sl-head { display: flex; justify-content: space-between; align-items: center; }
+    .sl-label { font-size: 0.85rem; font-weight: 500; color: var(--fg-muted); }
+
+    .num-input-wrap { display: flex; align-items: center; gap: 0.3rem; }
+    .num-input {
+      width: 3.5rem; text-align: right; background: var(--track); border: 1px solid var(--modal-border);
+      border-radius: 6px; color: var(--fg); font-family: 'DM Mono', monospace; font-size: 0.95rem;
+      padding: 0.2rem 0.4rem; outline: none; transition: border-color 0.2s ease;
+    }
+    .num-input:focus { border-color: var(--toggle-active); }
+    input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type="number"] { -moz-appearance: textfield; }
+
+    input[type="range"] {
+      -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 3px; outline: none; cursor: pointer; border: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none; width: 20px; height: 20px; border-radius: 50%;
+      background: var(--fg); cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.25); transition: transform 0.15s ease;
+    }
+    input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.28); }
+
+    .color-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.6rem; margin-top: 0.6rem; justify-items: center; }
+    .cp-btn {
+      width: 2.2rem; height: 2.2rem; border-radius: 50%; border: 3px solid transparent; cursor: pointer;
+      transition: transform 0.15s ease, border-color 0.15s ease;
+    }
+    .cp-btn:hover { transform: scale(1.15); }
+    .cp-btn.sel   { border-color: var(--fg); }
+    
+    .color-header { display: flex; justify-content: space-between; align-items: center; }
+    #colorPicker { width: 1.8rem; height: 1.8rem; border: none; border-radius: 50%; cursor: pointer; background: transparent; padding: 0; }
+
+    .divider { height: 1px; background: var(--modal-border); }
+    .tgl-row { display: flex; justify-content: space-between; align-items: center; }
+    .tgl-text { font-size: 0.85rem; font-weight: 500; }
+    .tgl-sw {
+      position: relative; width: 2.8rem; height: 1.5rem; border-radius: 999px; border: none; background: var(--track);
+      cursor: pointer; transition: background 0.22s ease; flex-shrink: 0;
+    }
+    .tgl-sw.on { background: var(--toggle-active); }
+    .tgl-knob {
+      position: absolute; top: 2px; left: 2px; width: 1.2rem; height: 1.2rem; border-radius: 50%; background: var(--modal-bg);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.25); transition: transform 0.22s cubic-bezier(0.34,1.56,0.64,1); pointer-events: none;
+    }
+    .tgl-sw.on .tgl-knob { transform: translateX(1.3rem); }
+
+    .custom-select {
+      padding: 0.35rem 0.7rem; border-radius: 6px; border: 1px solid var(--modal-border);
+      background: var(--bg); color: var(--fg); font-family: inherit; font-size: 0.85rem; cursor: pointer; outline: none;
+    }
+
+    .btn-primary {
+      padding: 0.35rem 0.8rem; border-radius: 6px; border: none;
+      background: var(--toggle-active); color: #ffffff; font-family: inherit; font-size: 0.85rem; font-weight: 500;
+      cursor: pointer; transition: opacity 0.2s ease, transform 0.1s ease; outline: none;
+    }
+    .btn-primary:active { transform: scale(0.95); }
+    .btn-primary:hover { opacity: 0.85; }
+  </style>
+</head>
+
+<body>
+
+  <button id="settingsBtn" aria-label="設定を開く">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0 .33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+    </svg>
+  </button>
+
+  <div id="modeLabel">作業中</div>
+
+  <div id="timerWrap">
+    <svg id="timerSvg" viewBox="0 0 220 220">
+      <circle cx="110" cy="110" r="98" fill="none" stroke-width="14" style="stroke:var(--depth);"/>
+      <circle cx="110" cy="110" r="45" fill="none" stroke-width="90" style="stroke:var(--track); transition:stroke 0.5s ease;"/>
+      <circle id="gaugeArc" cx="110" cy="110" r="45" fill="none" stroke-width="90" />
+      <circle id="centerHole" cx="110" cy="110" r="32" />
+      
+      <g id="iconPlay" opacity="0.4">
+        <polygon points="105,98 105,122 122,110" fill="currentColor"/>
+      </g>
+      <g id="iconPause" style="display:none;" opacity="0.4">
+        <rect x="100" y="98" width="6" height="24" rx="2" fill="currentColor"/>
+        <rect x="114" y="98" width="6" height="24" rx="2" fill="currentColor"/>
+      </g>
+
+      <!-- SVGの最後尾（最前面）に配置し、ゲージやアイコンの上に表示させる -->
+      <circle id="ripple" cx="110" cy="110" r="90" fill="none" />
+    </svg>
+    <div id="timeText" aria-live="polite"><span id="timeDisplay">25:00</span></div>
+  </div>
+
+  <p id="hint">タップでスタート&nbsp;&nbsp;·&nbsp;&nbsp;長押しでリセット</p>
+
+  <div id="settingsModal" role="dialog" aria-modal="true" aria-label="タイマー設定">
+    <div id="modalBox">
+      <!-- (中略... 設定モーダルの内容はそのままです) -->
+      <div class="modal-head">
+        <h2 class="modal-title">タイマー設定</h2>
+        <button id="closeModalBtn" aria-label="閉じる">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="settings-stack">
+        <div class="sl-row">
+          <div class="sl-head">
+            <span class="sl-label">作業時間</span>
+            <div class="num-input-wrap">
+              <input type="number" id="workNum" class="num-input" min="1" max="120" value="25" inputmode="numeric">
+              <span class="sl-label">分</span>
+            </div>
+          </div>
+          <input type="range" id="workSlider" min="1" max="120" value="25" aria-label="作業時間スライダー">
+        </div>
+
+        <div class="sl-row">
+          <div class="sl-head">
+            <span class="sl-label">休憩時間</span>
+            <div class="num-input-wrap">
+              <input type="number" id="breakNum" class="num-input" min="1" max="60" value="5" inputmode="numeric">
+              <span class="sl-label">分</span>
+            </div>
+          </div>
+          <input type="range" id="breakSlider" min="1" max="60" value="5" aria-label="休憩時間スライダー">
+        </div>
+
+        <div>
+          <div class="color-header">
+            <span class="sl-label">ゲージカラー</span>
+            <input type="color" id="colorPicker" value="#14b8a6" title="カスタムカラー" aria-label="カスタムカラーを選択">
+          </div>
+          <div class="color-grid">
+            <button class="cp-btn" data-color="#a8e8c0" style="background:#a8e8c0;" aria-label="パステルグリーン"></button>
+            <button class="cp-btn" data-color="#f5b8d0" style="background:#f5b8d0;" aria-label="パステルピンク"></button>
+            <button class="cp-btn" data-color="#a8c8f8" style="background:#a8c8f8;" aria-label="パステルブルー"></button>
+            <button class="cp-btn" data-color="#f8e090" style="background:#f8e090;" aria-label="パステルイエロー"></button>
+            <button class="cp-btn" data-color="#b8a9f0" style="background:#b8a9f0;" aria-label="パステルパープル"></button>
+            <button class="cp-btn" data-color="#f8c090" style="background:#f8c090;" aria-label="パステルオレンジ"></button>
+            <button class="cp-btn sel" data-color="#14b8a6" style="background:#14b8a6;" aria-label="エメラルドグリーン"></button>
+            <button class="cp-btn" data-color="#f43f5e" style="background:#f43f5e;" aria-label="ローズレッド"></button>
+            <button class="cp-btn" data-color="#3b82f6" style="background:#3b82f6;" aria-label="ブルー"></button>
+            <button class="cp-btn" data-color="#eab308" style="background:#eab308;" aria-label="イエロー"></button>
+            <button class="cp-btn" data-color="#8b5cf6" style="background:#8b5cf6;" aria-label="パープル"></button>
+            <button class="cp-btn" data-color="#f97316" style="background:#f97316;" aria-label="オレンジ"></button>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="tgl-row">
+          <span class="tgl-text">ダークモード</span>
+          <button id="tglDark" class="tgl-sw" role="switch" aria-checked="false" aria-label="ダークモード"><span class="tgl-knob"></span></button>
+        </div>
+
+        <div class="tgl-row">
+          <span class="tgl-text">秒数表示設定</span>
+          <button id="tglTime" class="tgl-sw" role="switch" aria-checked="false" aria-label="秒数を表示する"><span class="tgl-knob"></span></button>
+        </div>
+
+        <div class="tgl-row">
+          <span class="tgl-text">アラーム音 (ON/OFF)</span>
+          <button id="tglAlarm" class="tgl-sw on" role="switch" aria-checked="true" aria-label="アラーム音"><span class="tgl-knob"></span></button>
+        </div>
+
+        <div class="tgl-row">
+          <span class="tgl-text">アラームの回数</span>
+          <select id="alarmCountSelect" class="custom-select" aria-label="アラームの回数">
+            <option value="1" selected>1回</option>
+            <option value="2">2回</option>
+            <option value="3">3回</option>
+            <option value="4">4回</option>
+            <option value="5">5回</option>
+          </select>
+        </div>
+
+        <div class="tgl-row">
+          <span class="tgl-text">作業終了アラーム</span>
+          <select id="workAlarmSelect" class="custom-select" aria-label="作業終了アラームの種類">
+            <option value="bell">ベル</option>
+            <option value="marimba">マリンバ</option>
+            <option value="pluck">ハープ</option>
+            <option value="softchime">ソフトチャイム</option>
+            <option value="vibraphone">ビブラフォン</option>
+            <option value="kalimba">カリンバ</option>
+            <option value="epiano">エレピ</option>
+            <option value="chord" selected>ソフトコード</option>
+          </select>
+        </div>
+
+        <div class="tgl-row">
+          <span class="tgl-text">休憩終了アラーム</span>
+          <select id="breakAlarmSelect" class="custom-select" aria-label="休憩終了アラームの種類">
+            <option value="bell">ベル</option>
+            <option value="marimba">マリンバ</option>
+            <option value="pluck">ハープ</option>
+            <option value="softchime" selected>ソフトチャイム</option>
+            <option value="vibraphone">ビブラフォン</option>
+            <option value="kalimba">カリンバ</option>
+            <option value="epiano">エレピ</option>
+            <option value="chord">ソフトコード</option>
+          </select>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="tgl-row">
+          <span class="tgl-text">テスト再生</span>
+          <div class="num-input-wrap">
+            <select id="testAlarmSelect" class="custom-select" aria-label="テスト再生するアラームの種類">
+              <option value="bell">ベル</option>
+              <option value="marimba">マリンバ</option>
+              <option value="pluck">ハープ</option>
+              <option value="softchime" selected>ソフトチャイム</option>
+              <option value="vibraphone">ビブラフォン</option>
+              <option value="kalimba">カリンバ</option>
+              <option value="epiano">エレピ</option>
+              <option value="chord">ソフトコード</option>
+            </select>
+            <button id="testPlayBtn" class="btn-primary" aria-label="アラームをテスト再生する">再生</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script>
+  const S = {
+    workDuration:  25 * 60,
+    breakDuration:  5 * 60,
+    timeLeft:      25 * 60,
+    color:         '#14b8a6',
+    darkMode:      false,
+    showTime:      false,
+    alarmOn:       true,
+    workAlarm:     'chord',
+    breakAlarm:    'softchime',
+    alarmCount:    1,
+    mode:          'work',
+    status:        'idle',
+  };
+
+  const $ = id => document.getElementById(id);
+  const timerWrap   = $('timerWrap');
+  const gaugeArc    = $('gaugeArc');
+  const rippleEl    = $('ripple');
+  const timeText    = $('timeText');
+  const timeDisp    = $('timeDisplay');
+  const modeLabel   = $('modeLabel');
+  const hintEl      = $('hint');
+  const iconPlay    = $('iconPlay');
+  const iconPause   = $('iconPause');
+
+  const settingsBtn         = $('settingsBtn');
+  const settingsMod         = $('settingsModal');
+  const closeBtn            = $('closeModalBtn');
+  const workSlider          = $('workSlider');
+  const workNum             = $('workNum');
+  const breakSlider         = $('breakSlider');
+  const breakNum            = $('breakNum');
+  const colorPicker         = $('colorPicker');
+  const tglDark             = $('tglDark');
+  const tglTime             = $('tglTime');
+  const tglAlarm            = $('tglAlarm');
+  const workAlarmSelect     = $('workAlarmSelect');
+  const breakAlarmSelect    = $('breakAlarmSelect');
+  const alarmCountSelect    = $('alarmCountSelect');
+  const testAlarmSelect     = $('testAlarmSelect');
+  const testPlayBtn         = $('testPlayBtn');
+  const cpBtns              = document.querySelectorAll('.cp-btn');
+
+  const R   = 45;
+  const CIR = 2 * Math.PI * R;
+  gaugeArc.setAttribute('stroke-dasharray', CIR);
+  gaugeArc.style.stroke = S.color;
+
+  let audioCtx = null;
+  function ensureAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+
+  function triggerSound(ctx, type, root, dur, startTime) {
+    if (type === 'bell') {
+      const partials = [ [1.000, 0.50], [1.190, 0.30], [1.502, 0.20], [2.000, 0.15], [2.756, 0.08] ];
+      partials.forEach(([ratio, amp]) => {
+        const osc = ctx.createOscillator(); const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = 'sine'; osc.frequency.value = root * ratio;
+        gain.gain.setValueAtTime(0, startTime); 
+        gain.gain.linearRampToValueAtTime(amp * 0.28, startTime + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startTime + dur);
+        osc.start(startTime); osc.stop(startTime + dur + 0.05);
+      });
+    } else if (type === 'marimba') {
+      const osc = ctx.createOscillator(); const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination); osc.type = 'sine'; osc.frequency.value = root;
+      gain.gain.setValueAtTime(0, startTime); gain.gain.linearRampToValueAtTime(0.6, startTime + 0.005);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + Math.min(dur, 1.5));
+      osc.start(startTime); osc.stop(startTime + dur);
+    } else if (type === 'pluck') {
+      const osc = ctx.createOscillator(); const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination); osc.type = 'triangle'; osc.frequency.value = root;
+      gain.gain.setValueAtTime(0, startTime); gain.gain.linearRampToValueAtTime(0.4, startTime + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + dur * 0.8);
+      osc.start(startTime); osc.stop(startTime + dur);
+    } else if (type === 'softchime') {
+      const osc = ctx.createOscillator(); const gain = ctx.createGain();
+      osc.type = 'sine'; 
+      osc.frequency.setValueAtTime(root, startTime); 
+      osc.frequency.setValueAtTime(root * 1.2599, startTime + 0.3); 
+      gain.gain.setValueAtTime(0, startTime);
+      gain.gain.linearRampToValueAtTime(0.5, startTime + 0.1);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + dur);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(startTime); osc.stop(startTime + dur);
+    } else if (type === 'vibraphone') {
+      const osc = ctx.createOscillator(); const gain = ctx.createGain();
+      const lfo = ctx.createOscillator(); const lfoGain = ctx.createGain();
+      osc.type = 'sine'; osc.frequency.value = root;
+      lfo.type = 'sine'; lfo.frequency.value = 6;
+      lfo.connect(lfoGain); lfoGain.connect(gain.gain); lfoGain.gain.value = 0.3;
+      osc.connect(gain); gain.connect(ctx.destination);
+      gain.gain.setValueAtTime(0, startTime); gain.gain.linearRampToValueAtTime(0.5, startTime + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + dur);
+      osc.start(startTime); lfo.start(startTime); osc.stop(startTime + dur); lfo.stop(startTime + dur);
+    } else if (type === 'kalimba') {
+      const osc1 = ctx.createOscillator(); const gain1 = ctx.createGain();
+      const osc2 = ctx.createOscillator(); const gain2 = ctx.createGain();
+      osc1.type = 'triangle'; osc1.frequency.value = root; osc2.type = 'sine'; osc2.frequency.value = root * 2;
+      osc1.connect(gain1); gain1.connect(ctx.destination); osc2.connect(gain2); gain2.connect(ctx.destination);
+      gain1.gain.setValueAtTime(0, startTime); gain1.gain.linearRampToValueAtTime(0.4, startTime + 0.02); gain1.gain.exponentialRampToValueAtTime(0.001, startTime + dur * 0.7);
+      gain2.gain.setValueAtTime(0, startTime); gain2.gain.linearRampToValueAtTime(0.2, startTime + 0.01); gain2.gain.exponentialRampToValueAtTime(0.001, startTime + dur * 0.3);
+      osc1.start(startTime); osc2.start(startTime); osc1.stop(startTime + dur); osc2.stop(startTime + dur);
+    } else if (type === 'epiano') {
+      const osc = ctx.createOscillator(); const gain = ctx.createGain(); const filter = ctx.createBiquadFilter();
+      osc.type = 'square'; osc.frequency.value = root;
+      filter.type = 'lowpass'; filter.frequency.setValueAtTime(root * 3, startTime); filter.frequency.exponentialRampToValueAtTime(root, startTime + dur * 0.5);
+      osc.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
+      gain.gain.setValueAtTime(0, startTime); gain.gain.linearRampToValueAtTime(0.3, startTime + 0.02); gain.gain.exponentialRampToValueAtTime(0.001, startTime + dur);
+      osc.start(startTime); osc.stop(startTime + dur);
+    } else if (type === 'chord') {
+      const freqs = [root, root * 1.2599, root * 1.4983, root * 1.8877];
+      freqs.forEach(f => {
+        const osc = ctx.createOscillator(); const gain = ctx.createGain();
+        osc.type = 'sine'; osc.frequency.value = f;
+        osc.connect(gain); gain.connect(ctx.destination);
+        gain.gain.setValueAtTime(0, startTime); gain.gain.linearRampToValueAtTime(0.12, startTime + 0.1); gain.gain.exponentialRampToValueAtTime(0.001, startTime + dur);
+        osc.start(startTime); osc.stop(startTime + dur);
+      });
+    }
+  }
+
+  /* 波紋を発生させる（単一のアニメーションを確実に再トリガー） */
+  function triggerRipple() {
+    rippleEl.classList.remove('play'); 
+    // SVG要素のリフローには getBoundingClientRect() を使用する
+    void rippleEl.getBoundingClientRect(); 
+    rippleEl.classList.add('play');
+  }
+
+  /* タイマー終了時のアラームと波紋（音の出だしと波紋を完全に同期） */
+  function playAlarmAndRipple(isWorkEnd) {
+    const count = S.alarmCount;
+    const dur = 2.0;          // 音の長さ
+    const interval = 0.4;     // 音の間の休符
+    const cycleTime = dur + interval; // 1回あたりの合計サイクル(2.4秒)
+
+    if (!S.alarmOn) {
+      // 音声オフの場合は波紋だけループ
+      for (let i = 0; i < count; i++) {
+        setTimeout(() => triggerRipple(), i * cycleTime * 1000);
+      }
+      return;
+    }
+
+    try {
+      const ctx = ensureAudio();
+      const now  = ctx.currentTime;
+      const root = isWorkEnd ? 370 : 494; // 作業終了時: F#4, 休憩終了時: B4
+      const type = isWorkEnd ? S.workAlarm : S.breakAlarm;
+      
+      for (let i = 0; i < count; i++) {
+        const startTime = now + i * cycleTime;
+        // AudioContextの現在時刻(currentTime)と再生予定時刻の差分から正確な遅延を計算
+        const delayMs = (startTime - ctx.currentTime) * 1000;
+        
+        // 音が鳴り始める瞬間に合わせて波紋をスケジュール
+        setTimeout(() => triggerRipple(), Math.max(0, delayMs));
+        triggerSound(ctx, type, root, dur, startTime);
+      }
+    } catch (e) { console.warn('音声再生失敗:', e); }
+  }
+
+  /* テスト再生時のロジック（波紋は出さない・音程を固定） */
+  testPlayBtn.addEventListener('click', () => {
+    try {
+      const ctx = ensureAudio();
+      const now = ctx.currentTime;
+      const dur = 2.0; 
+      const type = testAlarmSelect.value;
+      
+      // テスト再生時の音程を本番のアラーム音(作業用)の周波数に統一
+      const root = 370; 
+      
+      triggerSound(ctx, type, root, dur, now);
+    } catch (e) { console.warn('テスト再生失敗:', e); }
+  });
+
+  let rafId     = null;
+  let lastStamp = null;
+
+  function tick(ts) {
+    if (S.status !== 'running') return;
+    if (lastStamp === null) lastStamp = ts;
+    const delta = (ts - lastStamp) / 1000;
+    lastStamp = ts;
+    S.timeLeft -= delta;
+
+    if (S.timeLeft <= 0) {
+      const justFinished = S.mode;
+      const overflow     = Math.abs(S.timeLeft);
+      if (S.mode === 'work') {
+        S.mode = 'break'; S.timeLeft = Math.max(0, S.breakDuration - overflow);
+      } else {
+        S.mode = 'work';  S.timeLeft = Math.max(0, S.workDuration - overflow);
+      }
+      
+      playAlarmAndRipple(justFinished === 'work');
+    }
+    render();
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function render() {
+    const total = Math.max(0, Math.ceil(S.timeLeft));
+    const mm    = Math.floor(total / 60);
+    const ss    = total % 60;
+    timeDisp.textContent = String(mm).padStart(2, '0') + ':' + String(ss).padStart(2, '0');
+    modeLabel.textContent = S.mode === 'work' ? '作業中' : '休憩中';
+
+    let offset;
+    if (S.mode === 'work') {
+      let ratio = S.timeLeft / S.workDuration; ratio = Math.max(0, Math.min(1, ratio));
+      offset = -(1 - ratio) * CIR; 
+    } else {
+      let ratio = (S.breakDuration - S.timeLeft) / S.breakDuration; ratio = Math.max(0, Math.min(1, ratio));
+      offset = -(1 - ratio) * CIR;
+    }
+    gaugeArc.setAttribute('stroke-dashoffset', offset);
+
+    if (S.showTime) {
+      iconPlay.style.display  = 'none'; iconPause.style.display = 'none';
+    } else {
+      if (S.status === 'running') { iconPlay.style.display  = 'none'; iconPause.style.display = ''; } 
+      else { iconPlay.style.display  = ''; iconPause.style.display = 'none'; }
+    }
+    gaugeArc.classList.toggle('breathing', S.status === 'idle');
+  }
+
+  function toggleTimer() {
+    ensureAudio();
+    if (S.status === 'running') {
+      S.status = 'paused'; lastStamp = null; if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+    } else {
+      S.status = 'running'; lastStamp = null; rafId = requestAnimationFrame(tick);
+    }
+    render();
+  }
+
+  function resetTimer() {
+    S.status = 'idle'; S.mode = 'work'; S.timeLeft = S.workDuration; lastStamp = null;
+    if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+    render();
+  }
+
+  const LONG_MS = 640; const DRIFT = 12;
+  let active = false; let fired = false; let lpTimer = null; let ox = 0, oy = 0;
+
+  timerWrap.addEventListener('contextmenu', e => e.preventDefault());
+  timerWrap.addEventListener('pointerdown', e => {
+    if (settingsMod.classList.contains('open')) return;
+    if (e.button !== undefined && e.button !== 0) return;
+    e.preventDefault(); try { timerWrap.setPointerCapture(e.pointerId); } catch (_) {}
+    active = true; fired = false; ox = e.clientX; oy = e.clientY;
+    timerWrap.style.transition = 'transform 0.08s ease'; timerWrap.style.transform = 'scale(0.96)';
+
+    lpTimer = setTimeout(() => {
+      if (!active) return;
+      fired = true; timerWrap.style.transition = 'transform 0.2s cubic-bezier(0.34,1.56,0.64,1)'; timerWrap.style.transform = 'scale(1.06)';
+      setTimeout(() => { timerWrap.style.transform = 'scale(1)'; }, 200);
+      resetTimer(); if (navigator.vibrate) navigator.vibrate(55);
+    }, LONG_MS);
+  }, { passive: false });
+
+  timerWrap.addEventListener('pointermove', e => {
+    if (!active || fired) return;
+    if (Math.hypot(e.clientX - ox, e.clientY - oy) > DRIFT) {
+      active = false; clearTimeout(lpTimer); lpTimer = null;
+      timerWrap.style.transition = 'transform 0.15s ease'; timerWrap.style.transform = 'scale(1)';
+    }
+  });
+
+  timerWrap.addEventListener('pointerup', () => {
+    if (!active) return; active = false; clearTimeout(lpTimer); lpTimer = null;
+    timerWrap.style.transition = 'transform 0.15s ease'; timerWrap.style.transform = 'scale(1)';
+    if (!fired) toggleTimer();
+  });
+
+  timerWrap.addEventListener('pointercancel', () => {
+    active = false; fired = false; clearTimeout(lpTimer); lpTimer = null;
+    timerWrap.style.transition = 'transform 0.15s ease'; timerWrap.style.transform = 'scale(1)';
+  });
+
+  settingsBtn.addEventListener('click', () => settingsMod.classList.add('open'));
+  closeBtn.addEventListener('click', () => settingsMod.classList.remove('open'));
+  settingsMod.addEventListener('pointerdown', e => { if (e.target === settingsMod) settingsMod.classList.remove('open'); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') settingsMod.classList.remove('open'); });
+
+  function sliderBg(el, val, max) {
+    const p = (val / max) * 100;
+    el.style.background = `linear-gradient(to right, ${S.color} ${p}%, var(--track) ${p}%)`;
+  }
+
+  function updateWorkDuration(val) {
+    let v = Math.max(1, Math.min(120, parseInt(val, 10) || 1));
+    workSlider.value = v; workNum.value = v; S.workDuration = v * 60; sliderBg(workSlider, v, 120);
+    if (S.mode === 'work') { S.timeLeft = S.workDuration; S.status = 'idle'; if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; } render(); }
+  }
+  function updateBreakDuration(val) {
+    let v = Math.max(1, Math.min(60, parseInt(val, 10) || 1));
+    breakSlider.value = v; breakNum.value = v; S.breakDuration = v * 60; sliderBg(breakSlider, v, 60);
+    if (S.mode === 'break') { S.timeLeft = S.breakDuration; S.status = 'idle'; if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; } render(); }
+  }
+
+  workSlider.addEventListener('input', e => updateWorkDuration(e.target.value));
+  workNum.addEventListener('change', e => updateWorkDuration(e.target.value));
+  breakSlider.addEventListener('input', e => updateBreakDuration(e.target.value));
+  breakNum.addEventListener('change', e => updateBreakDuration(e.target.value));
+
+  workAlarmSelect.addEventListener('change', e => { S.workAlarm = e.target.value; });
+  breakAlarmSelect.addEventListener('change', e => { S.breakAlarm = e.target.value; });
+  alarmCountSelect.addEventListener('change', e => { S.alarmCount = parseInt(e.target.value, 10); });
+
+  function applyColor(hex) {
+    S.color = hex; gaugeArc.style.stroke = hex; colorPicker.value = hex;
+    sliderBg(workSlider, +workSlider.value, 120); sliderBg(breakSlider, +breakSlider.value, 60);
+    cpBtns.forEach(b => b.classList.toggle('sel', b.dataset.color === hex));
+  }
+
+  colorPicker.addEventListener('input', e => applyColor(e.target.value));
+  cpBtns.forEach(b => b.addEventListener('click', () => applyColor(b.dataset.color)));
+
+  function mkToggle(btn, initOn, onChange) {
+    let on = initOn; btn.classList.toggle('on', on); btn.setAttribute('aria-checked', String(on));
+    btn.addEventListener('click', () => { on = !on; btn.classList.toggle('on', on); btn.setAttribute('aria-checked', String(on)); onChange(on); });
+  }
+
+  mkToggle(tglDark, false, on => { S.darkMode = on; document.documentElement.classList.toggle('dark', on); });
+  mkToggle(tglTime, false, on => { S.showTime = on; timeText.classList.toggle('show', on); render(); });
+  mkToggle(tglAlarm, true, on => { S.alarmOn = on; });
+
+  applyColor(S.color);
+  render();
+  setTimeout(() => hintEl.classList.add('show'), 900);
+  
+  // PWAサービスワーカーの登録
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => console.log('PWA: サービスワーカー登録完了'))
+      .catch(err => console.log('PWA: 登録失敗', err));
+  });
+}
+  </script>
+</body>
+</html>
