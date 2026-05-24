@@ -13,6 +13,9 @@
   <link rel="apple-touch-icon" href="icon-256.png">
 
   <style>
+    /* ═══════════════════════════════════════
+       Design Tokens
+    ═══════════════════════════════════════ */
     :root {
       --bg:            #eeede8;
       --fg:            #2a2a28;
@@ -102,6 +105,7 @@
     }
     #hint.show { opacity: 1; }
 
+    /* Modal */
     #settingsModal {
       position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center;
       background: rgba(0,0,0,0.4); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
@@ -216,7 +220,6 @@
         <rect x="114" y="98" width="6" height="24" rx="2" fill="currentColor"/>
       </g>
 
-      <!-- SVGの最後尾（最前面）に配置し、ゲージやアイコンの上に表示させる -->
       <circle id="ripple" cx="110" cy="110" r="90" fill="none" />
     </svg>
     <div id="timeText" aria-live="polite"><span id="timeDisplay">25:00</span></div>
@@ -226,7 +229,7 @@
 
   <div id="settingsModal" role="dialog" aria-modal="true" aria-label="タイマー設定">
     <div id="modalBox">
-      <!-- (中略... 設定モーダルの内容はそのままです) -->
+     
       <div class="modal-head">
         <h2 class="modal-title">タイマー設定</h2>
         <button id="closeModalBtn" aria-label="閉じる">
@@ -487,7 +490,6 @@
     }
   }
 
-  /* 波紋を発生させる（単一のアニメーションを確実に再トリガー） */
   function triggerRipple() {
     rippleEl.classList.remove('play'); 
     // SVG要素のリフローには getBoundingClientRect() を使用する
@@ -495,7 +497,6 @@
     rippleEl.classList.add('play');
   }
 
-  /* タイマー終了時のアラームと波紋（音の出だしと波紋を完全に同期） */
   function playAlarmAndRipple(isWorkEnd) {
     const count = S.alarmCount;
     const dur = 2.0;          // 音の長さ
@@ -503,7 +504,6 @@
     const cycleTime = dur + interval; // 1回あたりの合計サイクル(2.4秒)
 
     if (!S.alarmOn) {
-      // 音声オフの場合は波紋だけループ
       for (let i = 0; i < count; i++) {
         setTimeout(() => triggerRipple(), i * cycleTime * 1000);
       }
@@ -518,7 +518,6 @@
       
       for (let i = 0; i < count; i++) {
         const startTime = now + i * cycleTime;
-        // AudioContextの現在時刻(currentTime)と再生予定時刻の差分から正確な遅延を計算する処理
         const delayMs = (startTime - ctx.currentTime) * 1000;
         
         setTimeout(() => triggerRipple(), Math.max(0, delayMs));
@@ -534,7 +533,6 @@
       const dur = 2.0; 
       const type = testAlarmSelect.value;
       
-      // テスト再生時の音程を本番のアラーム音(作業用)の周波数に統一する
       const root = 370; 
       
       triggerSound(ctx, type, root, dur, now);
@@ -698,6 +696,7 @@
   render();
   setTimeout(() => hintEl.classList.add('show'), 900);
   
+  // PWAサービスワーカーの登録
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js')
