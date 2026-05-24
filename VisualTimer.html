@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
   <link rel="apple-touch-icon" href="icon-256.png">
-
+  
   <style>
     /* ═══════════════════════════════════════
        Design Tokens
@@ -26,7 +26,7 @@
       --modal-border:  rgba(0,0,0,0.09);
       --toggle-active: #7c6fcd;
       --hint-color:    rgba(0,0,0,0.4);
-      --ripple-color:  rgba(0,0,0,0.22);
+      --ripple-color:  #a0a0a0; /* 固定のグレー */
     }
     html.dark {
       --bg:            #16161a;
@@ -38,7 +38,7 @@
       --modal-border:  rgba(255,255,255,0.09);
       --toggle-active: #9d91e8;
       --hint-color:    rgba(255,255,255,0.3);
-      --ripple-color:  rgba(255,255,255,0.22);
+      --ripple-color:  #a0a0a0;
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -71,25 +71,28 @@
     #timerSvg { display: block; width: min(90vw, 600px); height: min(90vw, 600px); margin: 0 auto; overflow: visible; }
 
     #gaugeArc {
-      transform-origin: 50% 50%; transform: rotate(-90deg);
-      transition: stroke-dashoffset 0.12s linear, stroke 0.4s ease, transform 0.4s ease; stroke-linecap: butt; 
+      transform-origin: 50% 50%; 
+      /* iOSバグ回避のための鏡面反転をCSSで標準化固定 */
+      transform: scaleX(-1) rotate(-90deg);
+      transition: stroke-dashoffset 0.12s linear, stroke 0.4s ease; stroke-linecap: butt; 
     }
 
     @keyframes breathe { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
     #gaugeArc.breathing { animation: breathe 3s ease-in-out infinite; }
 
     /* アニメーション処理 */
-    #ripple {
-      transform-origin: 50% 50%; 
-      opacity: 0; 
-      stroke: var(--ripple-color); 
-      pointer-events: none;
+    #rippleContainer {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;
     }
-    @keyframes rippleOut { 
-      0%   { r: 90px; opacity: 0.45; stroke-width: 6px; } 
-      100% { r: 115px; opacity: 0; stroke-width: 0px; } 
+    .ripple-ring {
+      fill: none; stroke: var(--ripple-color); stroke-width: 4px; opacity: 0;
+      transform-origin: 50% 50%;
     }
-    #ripple.play { animation: rippleOut 0.7s ease-out forwards; }
+    @keyframes tripleRipple {
+      0%   { transform: scale(1); opacity: 0.6; }
+      100% { transform: scale(1.28); opacity: 0; }
+    }
+    .ripple-ring.play { animation: tripleRipple 1.2s ease-out forwards; }
 
     #centerHole { fill: var(--modal-bg); stroke: var(--modal-border); stroke-width: 1.5; transition: fill 0.5s ease, stroke 0.5s ease; }
 
@@ -207,7 +210,7 @@
   <div id="modeLabel">作業中</div>
 
   <div id="timerWrap">
-    <svg id="timerSvg" viewBox="0 0 220 220">
+    <svg id="timerSvg" viewBox="0 0 220 220" style="position: relative; z-index: 10;">
       <circle cx="110" cy="110" r="98" fill="none" stroke-width="14" style="stroke:var(--depth);"/>
       <circle cx="110" cy="110" r="45" fill="none" stroke-width="90" style="stroke:var(--track); transition:stroke 0.5s ease;"/>
       <circle id="gaugeArc" cx="110" cy="110" r="45" fill="none" stroke-width="90" />
@@ -220,10 +223,15 @@
         <rect x="100" y="98" width="6" height="24" rx="2" fill="currentColor"/>
         <rect x="114" y="98" width="6" height="24" rx="2" fill="currentColor"/>
       </g>
-
-      <circle id="ripple" cx="110" cy="110" r="90" fill="none" />
     </svg>
-    <div id="timeText" aria-live="polite"><span id="timeDisplay">25:00</span></div>
+
+    <svg id="rippleContainer" viewBox="0 0 220 220" style="z-index: 20;">
+      <circle class="ripple-ring" cx="110" cy="110" r="90" style="animation-delay: 0s;"/>
+      <circle class="ripple-ring" cx="110" cy="110" r="90" style="animation-delay: 0.15s;"/>
+      <circle class="ripple-ring" cx="110" cy="110" r="90" style="animation-delay: 0.3s;"/>
+    </svg>
+
+    <div id="timeText" aria-live="polite" style="z-index: 30;"><span id="timeDisplay">25:00</span></div>
   </div>
 
   <p id="hint">タップでスタート&nbsp;&nbsp;·&nbsp;&nbsp;長押しでリセット</p>
@@ -296,13 +304,13 @@
         </div>
 
         <div class="tgl-row">
-          <span class="tgl-text">ゲージ描画の修正 (iOS向け)</span>
-          <button id="tglInvert" class="tgl-sw" role="switch" aria-checked="false" aria-label="ゲージ描画の修正"><span class="tgl-knob"></span></button>
+          <span class="tgl-text">アラーム音 (ON/OFF)</span>
+          <button id="tglAlarm" class="tgl-sw on" role="switch" aria-checked="true" aria-label="アラーム音"><span class="tgl-knob"></span></button>
         </div>
 
         <div class="tgl-row">
-          <span class="tgl-text">アラーム音 (ON/OFF)</span>
-          <button id="tglAlarm" class="tgl-sw on" role="switch" aria-checked="true" aria-label="アラーム音"><span class="tgl-knob"></span></button>
+          <span class="tgl-text">バイブレーション(iOS非対応)</span>
+          <button id="tglVibrate" class="tgl-sw on" role="switch" aria-checked="true" aria-label="バイブレーション(iOS非対応)"><span class="tgl-knob"></span></button>
         </div>
 
         <div class="tgl-row">
@@ -375,8 +383,8 @@
     color:         '#14b8a6',
     darkMode:      false,
     showTime:      false,
-    invertGauge:   false,
     alarmOn:       true,
+    vibrateOn:     false, // バイブレーションの初期状態
     workAlarm:     'chord',
     breakAlarm:    'softchime',
     alarmCount:    1,
@@ -387,7 +395,6 @@
   const $ = id => document.getElementById(id);
   const timerWrap   = $('timerWrap');
   const gaugeArc    = $('gaugeArc');
-  const rippleEl    = $('ripple');
   const timeText    = $('timeText');
   const timeDisp    = $('timeDisplay');
   const modeLabel   = $('modeLabel');
@@ -405,8 +412,8 @@
   const colorPicker         = $('colorPicker');
   const tglDark             = $('tglDark');
   const tglTime             = $('tglTime');
-  const tglInvert           = $('tglInvert');
   const tglAlarm            = $('tglAlarm');
+  const tglVibrate          = $('tglVibrate'); // バイブ要素取得
   const workAlarmSelect     = $('workAlarmSelect');
   const breakAlarmSelect    = $('breakAlarmSelect');
   const alarmCountSelect    = $('alarmCountSelect');
@@ -498,9 +505,12 @@
   }
 
   function triggerRipple() {
-    rippleEl.classList.remove('play'); 
-    void rippleEl.getBoundingClientRect(); 
-    rippleEl.classList.add('play');
+    const rings = document.querySelectorAll('.ripple-ring');
+    rings.forEach(r => {
+      r.classList.remove('play');
+      void r.getBoundingClientRect(); 
+      r.classList.add('play');
+    });
   }
 
   function playAlarmAndRipple(isWorkEnd) {
@@ -509,12 +519,17 @@
     const interval = 0.4;     
     const cycleTime = dur + interval; 
 
-    if (!S.alarmOn) {
-      for (let i = 0; i < count; i++) {
-        setTimeout(() => triggerRipple(), i * cycleTime * 1000);
+    for (let i = 0; i < count; i++) {
+      const delayMs = i * cycleTime * 1000;
+      setTimeout(() => triggerRipple(), delayMs);
+      
+      // バイブレーション機能 (対応端末かつ設定ONの場合)
+      if (S.vibrateOn && navigator.vibrate) {
+        setTimeout(() => navigator.vibrate([300, 100, 300]), delayMs);
       }
-      return;
     }
+
+    if (!S.alarmOn) return;
 
     try {
       const ctx = ensureAudio();
@@ -524,20 +539,25 @@
       
       for (let i = 0; i < count; i++) {
         const startTime = now + i * cycleTime;
-        const delayMs = (startTime - ctx.currentTime) * 1000;
-        setTimeout(() => triggerRipple(), Math.max(0, delayMs));
         triggerSound(ctx, type, root, dur, startTime);
       }
     } catch (e) { console.warn('音声再生失敗:', e); }
   }
 
   testPlayBtn.addEventListener('click', () => {
+    // テスト再生時のバイブレーション確認
+    if (S.vibrateOn && navigator.vibrate) navigator.vibrate([300, 100, 300]);
+
     try {
       const ctx = ensureAudio();
       const now = ctx.currentTime;
       const dur = 2.0; 
       const type = testAlarmSelect.value;
-      const root = 370; 
+      
+      let root = 370; 
+      if (type === S.breakAlarm) root = 494; 
+      if (type === S.workAlarm) root = 370;  
+      
       triggerSound(ctx, type, root, dur, now);
     } catch (e) { console.warn('テスト再生失敗:', e); }
   });
@@ -581,17 +601,7 @@
     }
     ratio = Math.max(0, Math.min(1, ratio));
 
-    let offset;
-    if (S.invertGauge) {
-      // iOS用処理スイッチ
-      gaugeArc.style.transform = 'scaleX(-1) rotate(-90deg)';
-      offset = (1 - ratio) * CIR; 
-    } else {
-      // 従来モード: 負のオフセットを使用する
-      gaugeArc.style.transform = 'rotate(-90deg)';
-      offset = -(1 - ratio) * CIR;
-    }
-    
+    let offset = (1 - ratio) * CIR; 
     gaugeArc.setAttribute('stroke-dashoffset', offset);
 
     if (S.showTime) {
@@ -703,14 +713,14 @@
 
   mkToggle(tglDark, false, on => { S.darkMode = on; document.documentElement.classList.toggle('dark', on); });
   mkToggle(tglTime, false, on => { S.showTime = on; timeText.classList.toggle('show', on); render(); });
-  mkToggle(tglInvert, false, on => { S.invertGauge = on; render(); });
   mkToggle(tglAlarm, true, on => { S.alarmOn = on; });
+  mkToggle(tglVibrate, false, on => { S.vibrateOn = on; });
 
   applyColor(S.color);
   render();
   setTimeout(() => hintEl.classList.add('show'), 900);
   
-    // PWAサービスワーカーの登録
+      // PWAサービスワーカーの登録
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js')
