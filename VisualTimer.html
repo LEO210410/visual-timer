@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>VisualTimer</title>
-
+  
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon-256.png">
 
@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
-
+  
   <style>
     /* ═══════════════════════════════════════
        Design Tokens
@@ -113,7 +113,9 @@
     }
     #hint.show { opacity: 1; }
 
-    /* 横画面レイアウト最適化 */
+    /* ═══════════════════════════════════════
+       横画面レイアウト最適化 (Landscape)
+    ═══════════════════════════════════════ */
     @media (orientation: landscape) and (max-height: 600px) {
       #modeLabel {
         top: 50%; left: 4vw; transform: translateY(-50%);
@@ -329,8 +331,8 @@
         </div>
 
         <div class="tgl-row">
-          <span class="tgl-text">バイブレーション (iOS非対応)</span>
-          <button id="tglVibrate" class="tgl-sw" role="switch" aria-checked="false" aria-label="バイブレーション (iOS非対応)"><span class="tgl-knob"></span></button>
+          <span class="tgl-text">バイブレーション</span>
+          <button id="tglVibrate" class="tgl-sw" role="switch" aria-checked="false" aria-label="バイブレーション"><span class="tgl-knob"></span></button>
         </div>
 
         <div class="tgl-row">
@@ -419,7 +421,7 @@
     if (savedStr) {
       const saved = JSON.parse(savedStr);
       Object.assign(S, saved);
-      S.timeLeft = S.workDuration; // タスクキル後は常に作業時間（初期状態）から再開
+      S.timeLeft = S.workDuration;
     }
   } catch(e) { console.warn('設定の読み込みに失敗:', e); }
 
@@ -484,7 +486,11 @@
 
   async function requestWakeLock() {
     if ('wakeLock' in navigator) {
-      try { wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {}
+      try {
+        wakeLock = await navigator.wakeLock.request('screen');
+      } catch (err) {
+        console.warn('Wake Lock取得エラー:', err);
+      }
     }
   }
 
@@ -495,7 +501,9 @@
   }
 
   document.addEventListener('visibilitychange', async () => {
-    if (document.visibilityState === 'visible' && S.status === 'running') await requestWakeLock();
+    if (document.visibilityState === 'visible' && S.status === 'running') {
+      await requestWakeLock();
+    }
   });
 
   /* ────────────────────────────────────────
@@ -635,6 +643,9 @@
     } catch (e) { console.warn('テスト再生失敗:', e); }
   });
 
+  /* ────────────────────────────────────────
+     タイマーのメインロジック
+  ──────────────────────────────────────── */
   let rafId     = null;
   let lastStamp = null;
 
@@ -748,22 +759,20 @@
   settingsMod.addEventListener('pointerdown', e => { if (e.target === settingsMod) settingsMod.classList.remove('open'); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') settingsMod.classList.remove('open'); });
 
+  /* ────────────────────────────────────────
+     UIの初期化とイベントリスナーの登録
+  ──────────────────────────────────────── */
   function sliderBg(el, val, max) {
     const p = (val / max) * 100;
     el.style.background = `linear-gradient(to right, ${S.color} ${p}%, var(--track) ${p}%)`;
   }
 
-  /* ────────────────────────────────────────
-     UIの初期化とイベントリスナーの登録
-  ──────────────────────────────────────── */
-  // 復元した設定をUIに適用する初期化処理
+  // 復元した設定をUIに適用する
   workSlider.value = Math.floor(S.workDuration / 60);
   workNum.value = Math.floor(S.workDuration / 60);
-  workSlider.parentElement.querySelector('.sl-val').textContent = Math.floor(S.workDuration / 60) + ' 分';
 
   breakSlider.value = Math.floor(S.breakDuration / 60);
   breakNum.value = Math.floor(S.breakDuration / 60);
-  breakSlider.parentElement.querySelector('.sl-val').textContent = Math.floor(S.breakDuration / 60) + ' 分';
 
   workAlarmSelect.value = S.workAlarm;
   breakAlarmSelect.value = S.breakAlarm;
@@ -772,15 +781,14 @@
   function updateWorkDuration(val) {
     let v = Math.max(1, Math.min(120, parseInt(val, 10) || 1));
     workSlider.value = v; workNum.value = v; 
-    workSlider.parentElement.querySelector('.sl-val').textContent = v + ' 分';
     S.workDuration = v * 60; sliderBg(workSlider, v, 120);
     if (S.mode === 'work') { S.timeLeft = S.workDuration; S.status = 'idle'; if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; } render(); }
     saveConfig();
   }
+
   function updateBreakDuration(val) {
     let v = Math.max(1, Math.min(60, parseInt(val, 10) || 1));
     breakSlider.value = v; breakNum.value = v; 
-    breakSlider.parentElement.querySelector('.sl-val').textContent = v + ' 分';
     S.breakDuration = v * 60; sliderBg(breakSlider, v, 60);
     if (S.mode === 'break') { S.timeLeft = S.breakDuration; S.status = 'idle'; if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; } render(); }
     saveConfig();
