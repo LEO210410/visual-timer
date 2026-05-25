@@ -11,6 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
   <link rel="apple-touch-icon" href="icon-256.png">
+  
   <style>
     /* ═══════════════════════════════════════
        Design Tokens
@@ -63,7 +64,6 @@
       pointer-events: none; white-space: nowrap; transition: color 0.4s ease;
     }
 
-    /* タイマーコンテナのレスポンシブなサイズ制約 */
     #timerWrap {
       position: relative; touch-action: none; cursor: pointer; will-change: transform; -webkit-tap-highlight-color: transparent;
       width: min(85vw, 65vh, 600px);
@@ -71,7 +71,6 @@
       margin: 0 auto;
     }
 
-    /* SVGは親コンテナのサイズに完全追従させる */
     #timerSvg { display: block; width: 100%; height: 100%; overflow: visible; }
 
     #gaugeArc {
@@ -102,7 +101,6 @@
       position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
       font-family: 'DM Mono', monospace; font-weight: 500; color: var(--fg);
       pointer-events: none; transition: color 0.4s ease;
-      /* フォントサイズも画面の短辺に合わせてスケーリングする */
       font-size: clamp(1.8rem, 8vmin, 3.5rem);
     }
     #timeText.show { display: flex; }
@@ -113,6 +111,28 @@
     }
     #hint.show { opacity: 1; }
 
+    /* ═══════════════════════════════════════
+       横画面レイアウト最適化 (Landscape)
+    ═══════════════════════════════════════ */
+    @media (orientation: landscape) and (max-height: 600px) {
+      #modeLabel {
+        top: 50%; left: 4vw; transform: translateY(-50%);
+        font-size: 1rem;
+      }
+      #hint {
+        position: fixed; top: 50%; right: 4vw; transform: translateY(-50%);
+        margin-top: 0; width: 6rem; text-align: center; line-height: 1.8;
+      }
+      #timerWrap {
+        width: min(80vw, 92vh);
+        height: min(80vw, 92vh);
+      }
+      #soundBadge {
+        bottom: 1rem;
+      }
+    }
+
+    /* Modal */
     #settingsModal {
       position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center;
       background: rgba(0,0,0,0.4); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
@@ -429,6 +449,37 @@
   gaugeArc.setAttribute('stroke-dasharray', CIR);
   gaugeArc.style.stroke = S.color;
 
+  /* ────────────────────────────────────────
+     Wake Lock API (スリープ防止ロジック)
+  ──────────────────────────────────────── */
+  let wakeLock = null;
+
+  async function requestWakeLock() {
+    if ('wakeLock' in navigator) {
+      try {
+        wakeLock = await navigator.wakeLock.request('screen');
+      } catch (err) {
+        console.warn('Wake Lock取得エラー:', err);
+      }
+    }
+  }
+
+  function releaseWakeLock() {
+    if (wakeLock !== null) {
+      wakeLock.release().catch(() => {}).finally(() => { wakeLock = null; });
+    }
+  }
+
+  // タブ切り替え等で可視性が変わった際の再ロック処理
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState === 'visible' && S.status === 'running') {
+      await requestWakeLock();
+    }
+  });
+
+  /* ────────────────────────────────────────
+     音声・アニメーションロジック
+  ──────────────────────────────────────── */
   let audioCtx = null;
   function ensureAudio() {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -618,8 +669,10 @@
     ensureAudio();
     if (S.status === 'running') {
       S.status = 'paused'; lastStamp = null; if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+      releaseWakeLock(); // 一時停止時にスリープロックを解除
     } else {
       S.status = 'running'; lastStamp = null; rafId = requestAnimationFrame(tick);
+      requestWakeLock(); // 再生時にスリープロックを要求
     }
     render();
   }
@@ -627,6 +680,7 @@
   function resetTimer() {
     S.status = 'idle'; S.mode = 'work'; S.timeLeft = S.workDuration; lastStamp = null;
     if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+    releaseWakeLock(); // リセット時にスリープロックを解除
     render();
   }
 
@@ -721,13 +775,13 @@
   render();
   setTimeout(() => hintEl.classList.add('show'), 900);
   
-        // PWAサービスワーカーの登録
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js')
-      .then(reg => console.log('PWA: サービスワーカー登録完了'))
-      .catch(err => console.log('PWA: 登録失敗', err));
-  });
+          // PWAサービスワーカーの登録
+	if ('serviceWorker' in navigator) {
+  		window.addEventListener('load', () => {
+    	navigator.serviceWorker.register('./sw.js')
+      	.then(reg => console.log('PWA: サービスワーカー登録完了'))
+      	.catch(err => console.log('PWA: 登録失敗', err));
+  	});
 }
   </script>
 </body>
