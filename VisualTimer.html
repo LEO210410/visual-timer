@@ -121,7 +121,7 @@
       }
       #hint {
         position: fixed; top: 50%; right: 4vw; transform: translateY(-50%);
-        margin-top: 0; width: 6rem; text-align: center; line-height: 1.8;
+        margin-top: 0; width: max-content; text-align: center; line-height: 1.8;
       }
       #timerWrap {
         width: min(80vw, 92vh);
@@ -257,7 +257,7 @@
     <div id="timeText" aria-live="polite" style="z-index: 30;"><span id="timeDisplay">25:00</span></div>
   </div>
 
-  <p id="hint">タップでスタート&nbsp;&nbsp;·&nbsp;&nbsp;長押しでリセット</p>
+  <p id="hint">タップでスタート<br>長押しでリセット</p>
 
   <div id="settingsModal" role="dialog" aria-modal="true" aria-label="タイマー設定">
     <div id="modalBox">
