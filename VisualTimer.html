@@ -4,14 +4,16 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>VisualTimer</title>
+
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-256.png">
+
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config = { darkMode: 'class' };</script>
-  <link rel="manifest" href="manifest.json">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
-  <link rel="apple-touch-icon" href="icon-256.png">
-  
+
   <style>
     /* ═══════════════════════════════════════
        Design Tokens
@@ -111,9 +113,7 @@
     }
     #hint.show { opacity: 1; }
 
-    /* ═══════════════════════════════════════
-       横画面レイアウト最適化 (Landscape)
-    ═══════════════════════════════════════ */
+    /* 横画面レイアウト最適化 */
     @media (orientation: landscape) and (max-height: 600px) {
       #modeLabel {
         top: 50%; left: 4vw; transform: translateY(-50%);
@@ -126,9 +126,6 @@
       #timerWrap {
         width: min(80vw, 92vh);
         height: min(80vw, 92vh);
-      }
-      #soundBadge {
-        bottom: 1rem;
       }
     }
 
@@ -399,10 +396,12 @@
   </div>
 
   <script>
-  const S = {
+  /* ────────────────────────────────────────
+     初期状態の定義と LocalStorage による永続化ロジック
+  ──────────────────────────────────────── */
+  const defaultState = {
     workDuration:  25 * 60,
     breakDuration:  5 * 60,
-    timeLeft:      25 * 60,
     color:         '#14b8a6',
     darkMode:      false,
     showTime:      false,
@@ -410,11 +409,41 @@
     vibrateOn:     false,
     workAlarm:     'chord',
     breakAlarm:    'softchime',
-    alarmCount:    1,
-    mode:          'work',
-    status:        'idle',
+    alarmCount:    1
   };
 
+  const S = { ...defaultState, timeLeft: 25 * 60, mode: 'work', status: 'idle' };
+
+  try {
+    const savedStr = localStorage.getItem('visualTimerConfig');
+    if (savedStr) {
+      const saved = JSON.parse(savedStr);
+      Object.assign(S, saved);
+      S.timeLeft = S.workDuration; // タスクキル後は常に作業時間（初期状態）から再開
+    }
+  } catch(e) { console.warn('設定の読み込みに失敗:', e); }
+
+  function saveConfig() {
+    try {
+      const configToSave = {
+        workDuration:  S.workDuration,
+        breakDuration: S.breakDuration,
+        color:         S.color,
+        darkMode:      S.darkMode,
+        showTime:      S.showTime,
+        alarmOn:       S.alarmOn,
+        vibrateOn:     S.vibrateOn,
+        workAlarm:     S.workAlarm,
+        breakAlarm:    S.breakAlarm,
+        alarmCount:    S.alarmCount
+      };
+      localStorage.setItem('visualTimerConfig', JSON.stringify(configToSave));
+    } catch(e) { console.warn('設定の保存に失敗:', e); }
+  }
+
+  /* ────────────────────────────────────────
+     DOM 要素の取得
+  ──────────────────────────────────────── */
   const $ = id => document.getElementById(id);
   const timerWrap   = $('timerWrap');
   const gaugeArc    = $('gaugeArc');
@@ -447,7 +476,6 @@
   const R   = 45;
   const CIR = 2 * Math.PI * R;
   gaugeArc.setAttribute('stroke-dasharray', CIR);
-  gaugeArc.style.stroke = S.color;
 
   /* ────────────────────────────────────────
      Wake Lock API (スリープ防止ロジック)
@@ -456,11 +484,7 @@
 
   async function requestWakeLock() {
     if ('wakeLock' in navigator) {
-      try {
-        wakeLock = await navigator.wakeLock.request('screen');
-      } catch (err) {
-        console.warn('Wake Lock取得エラー:', err);
-      }
+      try { wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {}
     }
   }
 
@@ -470,11 +494,8 @@
     }
   }
 
-  // タブ切り替え等で可視性が変わった際の再ロック処理
   document.addEventListener('visibilitychange', async () => {
-    if (document.visibilityState === 'visible' && S.status === 'running') {
-      await requestWakeLock();
-    }
+    if (document.visibilityState === 'visible' && S.status === 'running') await requestWakeLock();
   });
 
   /* ────────────────────────────────────────
@@ -669,10 +690,10 @@
     ensureAudio();
     if (S.status === 'running') {
       S.status = 'paused'; lastStamp = null; if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
-      releaseWakeLock(); // 一時停止時にスリープロックを解除
+      releaseWakeLock();
     } else {
       S.status = 'running'; lastStamp = null; rafId = requestAnimationFrame(tick);
-      requestWakeLock(); // 再生時にスリープロックを要求
+      requestWakeLock();
     }
     render();
   }
@@ -680,7 +701,7 @@
   function resetTimer() {
     S.status = 'idle'; S.mode = 'work'; S.timeLeft = S.workDuration; lastStamp = null;
     if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
-    releaseWakeLock(); // リセット時にスリープロックを解除
+    releaseWakeLock();
     render();
   }
 
@@ -732,15 +753,37 @@
     el.style.background = `linear-gradient(to right, ${S.color} ${p}%, var(--track) ${p}%)`;
   }
 
+  /* ────────────────────────────────────────
+     UIの初期化とイベントリスナーの登録
+  ──────────────────────────────────────── */
+  // 復元した設定をUIに適用する初期化処理
+  workSlider.value = Math.floor(S.workDuration / 60);
+  workNum.value = Math.floor(S.workDuration / 60);
+  workSlider.parentElement.querySelector('.sl-val').textContent = Math.floor(S.workDuration / 60) + ' 分';
+
+  breakSlider.value = Math.floor(S.breakDuration / 60);
+  breakNum.value = Math.floor(S.breakDuration / 60);
+  breakSlider.parentElement.querySelector('.sl-val').textContent = Math.floor(S.breakDuration / 60) + ' 分';
+
+  workAlarmSelect.value = S.workAlarm;
+  breakAlarmSelect.value = S.breakAlarm;
+  alarmCountSelect.value = S.alarmCount;
+
   function updateWorkDuration(val) {
     let v = Math.max(1, Math.min(120, parseInt(val, 10) || 1));
-    workSlider.value = v; workNum.value = v; S.workDuration = v * 60; sliderBg(workSlider, v, 120);
+    workSlider.value = v; workNum.value = v; 
+    workSlider.parentElement.querySelector('.sl-val').textContent = v + ' 分';
+    S.workDuration = v * 60; sliderBg(workSlider, v, 120);
     if (S.mode === 'work') { S.timeLeft = S.workDuration; S.status = 'idle'; if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; } render(); }
+    saveConfig();
   }
   function updateBreakDuration(val) {
     let v = Math.max(1, Math.min(60, parseInt(val, 10) || 1));
-    breakSlider.value = v; breakNum.value = v; S.breakDuration = v * 60; sliderBg(breakSlider, v, 60);
+    breakSlider.value = v; breakNum.value = v; 
+    breakSlider.parentElement.querySelector('.sl-val').textContent = v + ' 分';
+    S.breakDuration = v * 60; sliderBg(breakSlider, v, 60);
     if (S.mode === 'break') { S.timeLeft = S.breakDuration; S.status = 'idle'; if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; } render(); }
+    saveConfig();
   }
 
   workSlider.addEventListener('input', e => updateWorkDuration(e.target.value));
@@ -748,14 +791,15 @@
   breakSlider.addEventListener('input', e => updateBreakDuration(e.target.value));
   breakNum.addEventListener('change', e => updateBreakDuration(e.target.value));
 
-  workAlarmSelect.addEventListener('change', e => { S.workAlarm = e.target.value; });
-  breakAlarmSelect.addEventListener('change', e => { S.breakAlarm = e.target.value; });
-  alarmCountSelect.addEventListener('change', e => { S.alarmCount = parseInt(e.target.value, 10); });
+  workAlarmSelect.addEventListener('change', e => { S.workAlarm = e.target.value; saveConfig(); });
+  breakAlarmSelect.addEventListener('change', e => { S.breakAlarm = e.target.value; saveConfig(); });
+  alarmCountSelect.addEventListener('change', e => { S.alarmCount = parseInt(e.target.value, 10); saveConfig(); });
 
   function applyColor(hex) {
     S.color = hex; gaugeArc.style.stroke = hex; colorPicker.value = hex;
     sliderBg(workSlider, +workSlider.value, 120); sliderBg(breakSlider, +breakSlider.value, 60);
     cpBtns.forEach(b => b.classList.toggle('sel', b.dataset.color === hex));
+    saveConfig();
   }
 
   colorPicker.addEventListener('input', e => applyColor(e.target.value));
@@ -766,23 +810,29 @@
     btn.addEventListener('click', () => { on = !on; btn.classList.toggle('on', on); btn.setAttribute('aria-checked', String(on)); onChange(on); });
   }
 
-  mkToggle(tglDark, false, on => { S.darkMode = on; document.documentElement.classList.toggle('dark', on); });
-  mkToggle(tglTime, false, on => { S.showTime = on; timeText.classList.toggle('show', on); render(); });
-  mkToggle(tglAlarm, true, on => { S.alarmOn = on; });
-  mkToggle(tglVibrate, false, on => { S.vibrateOn = on; });
+  mkToggle(tglDark, S.darkMode, on => { S.darkMode = on; document.documentElement.classList.toggle('dark', on); saveConfig(); });
+  if (S.darkMode) document.documentElement.classList.add('dark');
+
+  mkToggle(tglTime, S.showTime, on => { S.showTime = on; timeText.classList.toggle('show', on); render(); saveConfig(); });
+  if (S.showTime) timeText.classList.add('show');
+
+  mkToggle(tglAlarm, S.alarmOn, on => { S.alarmOn = on; saveConfig(); });
+  mkToggle(tglVibrate, S.vibrateOn, on => { S.vibrateOn = on; saveConfig(); });
 
   applyColor(S.color);
   render();
   setTimeout(() => hintEl.classList.add('show'), 900);
-  
-          // PWAサービスワーカーの登録
-	if ('serviceWorker' in navigator) {
-  		window.addEventListener('load', () => {
-    	navigator.serviceWorker.register('./sw.js')
-      	.then(reg => console.log('PWA: サービスワーカー登録完了'))
-      	.catch(err => console.log('PWA: 登録失敗', err));
-  	});
-}
+
+  /* ────────────────────────────────────────
+     PWAサービスワーカーの登録
+  ──────────────────────────────────────── */
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js')
+      .then(reg => console.log('PWA: サービスワーカー登録完了'))
+      .catch(err => console.log('PWA: 登録失敗', err));
+    });
+  }
   </script>
 </body>
 </html>
