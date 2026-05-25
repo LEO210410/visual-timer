@@ -11,7 +11,6 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
   <link rel="apple-touch-icon" href="icon-256.png">
-  
   <style>
     /* ═══════════════════════════════════════
        Design Tokens
@@ -26,7 +25,7 @@
       --modal-border:  rgba(0,0,0,0.09);
       --toggle-active: #7c6fcd;
       --hint-color:    rgba(0,0,0,0.4);
-      --ripple-color:  #a0a0a0; /* 固定のグレー */
+      --ripple-color:  #a0a0a0;
     }
     html.dark {
       --bg:            #16161a;
@@ -64,15 +63,19 @@
       pointer-events: none; white-space: nowrap; transition: color 0.4s ease;
     }
 
+    /* タイマーコンテナのレスポンシブなサイズ制約 */
     #timerWrap {
       position: relative; touch-action: none; cursor: pointer; will-change: transform; -webkit-tap-highlight-color: transparent;
+      width: min(85vw, 65vh, 600px);
+      height: min(85vw, 65vh, 600px);
+      margin: 0 auto;
     }
 
-    #timerSvg { display: block; width: min(90vw, 600px); height: min(90vw, 600px); margin: 0 auto; overflow: visible; }
+    /* SVGは親コンテナのサイズに完全追従させる */
+    #timerSvg { display: block; width: 100%; height: 100%; overflow: visible; }
 
     #gaugeArc {
       transform-origin: 50% 50%; 
-      /* iOSバグ回避のための鏡面反転をCSSで標準化固定 */
       transform: scaleX(-1) rotate(-90deg);
       transition: stroke-dashoffset 0.12s linear, stroke 0.4s ease; stroke-linecap: butt; 
     }
@@ -80,7 +83,6 @@
     @keyframes breathe { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
     #gaugeArc.breathing { animation: breathe 3s ease-in-out infinite; }
 
-    /* アニメーション処理 */
     #rippleContainer {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;
     }
@@ -99,7 +101,9 @@
     #timeText {
       position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
       font-family: 'DM Mono', monospace; font-weight: 500; color: var(--fg);
-      pointer-events: none; transition: color 0.4s ease; font-size: clamp(1.8rem, 6vw, 3rem);
+      pointer-events: none; transition: color 0.4s ease;
+      /* フォントサイズも画面の短辺に合わせてスケーリングする */
+      font-size: clamp(1.8rem, 8vmin, 3.5rem);
     }
     #timeText.show { display: flex; }
 
@@ -109,7 +113,6 @@
     }
     #hint.show { opacity: 1; }
 
-    /* Modal */
     #settingsModal {
       position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center;
       background: rgba(0,0,0,0.4); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
@@ -309,8 +312,8 @@
         </div>
 
         <div class="tgl-row">
-          <span class="tgl-text">バイブレーション(iOS非対応)</span>
-          <button id="tglVibrate" class="tgl-sw on" role="switch" aria-checked="true" aria-label="バイブレーション(iOS非対応)"><span class="tgl-knob"></span></button>
+          <span class="tgl-text">バイブレーション</span>
+          <button id="tglVibrate" class="tgl-sw" role="switch" aria-checked="false" aria-label="バイブレーション"><span class="tgl-knob"></span></button>
         </div>
 
         <div class="tgl-row">
@@ -384,7 +387,7 @@
     darkMode:      false,
     showTime:      false,
     alarmOn:       true,
-    vibrateOn:     false, // バイブレーションの初期状態
+    vibrateOn:     false,
     workAlarm:     'chord',
     breakAlarm:    'softchime',
     alarmCount:    1,
@@ -413,7 +416,7 @@
   const tglDark             = $('tglDark');
   const tglTime             = $('tglTime');
   const tglAlarm            = $('tglAlarm');
-  const tglVibrate          = $('tglVibrate'); // バイブ要素取得
+  const tglVibrate          = $('tglVibrate');
   const workAlarmSelect     = $('workAlarmSelect');
   const breakAlarmSelect    = $('breakAlarmSelect');
   const alarmCountSelect    = $('alarmCountSelect');
@@ -523,7 +526,6 @@
       const delayMs = i * cycleTime * 1000;
       setTimeout(() => triggerRipple(), delayMs);
       
-      // バイブレーション機能 (対応端末かつ設定ONの場合)
       if (S.vibrateOn && navigator.vibrate) {
         setTimeout(() => navigator.vibrate([300, 100, 300]), delayMs);
       }
@@ -545,7 +547,6 @@
   }
 
   testPlayBtn.addEventListener('click', () => {
-    // テスト再生時のバイブレーション確認
     if (S.vibrateOn && navigator.vibrate) navigator.vibrate([300, 100, 300]);
 
     try {
@@ -720,7 +721,7 @@
   render();
   setTimeout(() => hintEl.classList.add('show'), 900);
   
-      // PWAサービスワーカーの登録
+        // PWAサービスワーカーの登録
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js')
